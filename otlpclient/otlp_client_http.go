@@ -15,6 +15,8 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
+
+        "encoding/json"
 )
 
 // HttpClient holds state information for HTTP/OTLP.
@@ -49,9 +51,11 @@ func (hc *HttpClient) Start(ctx context.Context) (context.Context, error) {
 
 // UploadTraces sends the protobuf spans up to the HTTP server.
 func (hc *HttpClient) UploadTraces(ctx context.Context, rsps []*tracepb.ResourceSpans) (context.Context, error) {
+    fmt.Println("in HttpClient.UploadTraces")
 	msg := coltracepb.ExportTraceServiceRequest{ResourceSpans: rsps}
 	protoMsg, err := proto.Marshal(&msg)
 	if err != nil {
+                fmt.Println("proto.Marshal failed", err)
 		return ctx, fmt.Errorf("failed to marshal trace service request: %w", err)
 	}
 	body := bytes.NewBuffer(protoMsg)
@@ -59,6 +63,7 @@ func (hc *HttpClient) UploadTraces(ctx context.Context, rsps []*tracepb.Resource
 	endpointURL := hc.config.GetEndpoint()
 	req, err := http.NewRequest("POST", endpointURL.String(), body)
 	if err != nil {
+                fmt.Println("http request failed", err)
 		return ctx, fmt.Errorf("failed to create HTTP POST request: %w", err)
 	}
 
@@ -76,9 +81,12 @@ func (hc *HttpClient) UploadTraces(ctx context.Context, rsps []*tracepb.Resource
 		} else {
 			body, err = io.ReadAll(resp.Body)
 			if err != nil {
+                                fmt.Println("error from io.readAll", err)
 				return ctx, true, 0, fmt.Errorf("io.Readall of response body failed: %w", err)
 			}
 			resp.Body.Close()
+                        fmt.Println("guess we're almost done. body: ", body)
+                        fmt.Println("guess we're almost done. resp: ", resp)
 
 			return processHTTPStatus(ctx, resp, body)
 		}
@@ -92,8 +100,10 @@ func processHTTPStatus(ctx context.Context, resp *http.Response, body []byte) (c
 		// success & partial success
 		// spec says server MUST send 200 OK, we'll be generous and accept any 200
 		etsr := coltracepb.ExportTraceServiceResponse{}
-		err := proto.Unmarshal(body, &etsr)
+		err := json.Unmarshal(body, &etsr)
 		if err != nil {
+                    fmt.Println("failed to print body: ", body)
+                    fmt.Println("i guess etsr too: ", etsr)
 			// if the server's sending garbage, no point in retrying
 			return ctx, false, 0, fmt.Errorf("unmarshal of server response failed: %w", err)
 		}

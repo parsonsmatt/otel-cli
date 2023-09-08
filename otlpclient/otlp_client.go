@@ -40,12 +40,15 @@ type OTLPConfig interface {
 
 // SendSpan connects to the OTLP server, sends the span, and disconnects.
 func SendSpan(ctx context.Context, client OTLPClient, config OTLPConfig, span *tracepb.Span) (context.Context, error) {
+        fmt.Println("in SendSpan")
 	if !config.GetIsRecording() {
 		return ctx, nil
 	}
+        fmt.Println("config is recording")
 
 	resourceAttrs, err := resourceAttributes(ctx, config.GetServiceName())
 	if err != nil {
+                fmt.Println("err from resourceAttrs")
 		return ctx, err
 	}
 
@@ -70,6 +73,7 @@ func SendSpan(ctx context.Context, client OTLPClient, config OTLPConfig, span *t
 
 	ctx, err = client.UploadTraces(ctx, rsps)
 	if err != nil {
+                fmt.Println("err in client.UploadTraces", err)
 		return SaveError(ctx, time.Now(), err)
 	}
 
@@ -90,6 +94,7 @@ func deadlineCtx(ctx context.Context, timeout time.Duration, startupTime time.Ti
 // resourceAttributes calls the OTel SDK to get automatic resource attrs and
 // returns them converted to []*commonpb.KeyValue for use with protobuf.
 func resourceAttributes(ctx context.Context, serviceName string) ([]*commonpb.KeyValue, error) {
+        fmt.Println("in resource attributes")
 	// set the service name that will show up in tracing UIs
 	resOpts := []resource.Option{
 		resource.WithAttributes(semconv.ServiceNameKey.String(serviceName)),
@@ -100,15 +105,19 @@ func resourceAttributes(ctx context.Context, serviceName string) ([]*commonpb.Ke
 		//resource.WithProcess(),
 		//resource.WithContainer(),
 	}
+        fmt.Println("initialized resOpts")
 
 	res, err := resource.New(ctx, resOpts...)
 	if err != nil {
+                fmt.Println("err in resource.New")
 		return nil, fmt.Errorf("failed to create OpenTelemetry service name resource: %s", err)
 	}
 
+        fmt.Println("res: ", res)
 	attrs := []*commonpb.KeyValue{}
 
 	for _, attr := range res.Attributes() {
+                fmt.Println("doing something with attr: ", attr)
 		av := new(commonpb.AnyValue)
 
 		// does not implement slice types... should be fine?
@@ -130,6 +139,7 @@ func resourceAttributes(ctx context.Context, serviceName string) ([]*commonpb.Ke
 			Value: av,
 		}
 		attrs = append(attrs, &ckv)
+                fmt.Println("appended alright", attr, attrs)
 	}
 
 	return attrs, nil

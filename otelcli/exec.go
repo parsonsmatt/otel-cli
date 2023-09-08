@@ -1,10 +1,13 @@
 package otelcli
 
 import (
+    // "errors"
 	"bytes"
 	"encoding/csv"
 	"fmt"
 	"os"
+        "os/signal"
+        "syscall"
 	"os/exec"
 	"strings"
 	"time"
@@ -94,26 +97,50 @@ func doExec(cmd *cobra.Command, args []string) {
 		}
 	}
 
+        c := make(chan os.Signal, 100)
+        signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+        // ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+        // defer stop()
+
+        finishSpan := func () {
+            fmt.Println("finishing span")
+            span.EndTimeUnixNano = uint64(time.Now().UnixNano())
+
+            fmt.Println("sending span...")
+            fmt.Println("config.GetIsRecording(): ", config.GetIsRecording())
+            ctx, err := otlpclient.SendSpan(ctx, client, config, span)
+            if err != nil {
+                    fmt.Println("unable to send span", err)
+                    config.SoftFail("unable to send span: %s", err)
+            }
+            fmt.Println("span spent??")
+
+            _, err = client.Stop(ctx)
+            if err != nil {
+                    config.SoftFail("client.Stop() failed: %s", err)
+            }
+            fmt.Println("client stopped")
+
+            // set the global exit code so main() can grab it and os.Exit() properly
+            Diag.ExecExitCode = child.ProcessState.ExitCode()
+            fmt.Println("exit code set")
+
+            config.PropagateTraceparent(span, os.Stdout)
+            fmt.Println("propagate traceparent done")
+        }
+        go func() {
+            for sig := range c {
+                defer finishSpan()
+                fmt.Println("sig: ", sig)
+            }
+
+        }()
+        defer finishSpan()
+
 	if err := child.Run(); err != nil {
                 span.Status = & tracev1.Status {
                         Message: fmt.Sprintln("exec command failed: ", err),
                         Code: tracev1.Status_STATUS_CODE_ERROR,
                 }
 	}
-	span.EndTimeUnixNano = uint64(time.Now().UnixNano())
-
-	ctx, err := otlpclient.SendSpan(ctx, client, config, span)
-	if err != nil {
-		config.SoftFail("unable to send span: %s", err)
-	}
-
-	_, err = client.Stop(ctx)
-	if err != nil {
-		config.SoftFail("client.Stop() failed: %s", err)
-	}
-
-	// set the global exit code so main() can grab it and os.Exit() properly
-	Diag.ExecExitCode = child.ProcessState.ExitCode()
-
-	config.PropagateTraceparent(span, os.Stdout)
 }
