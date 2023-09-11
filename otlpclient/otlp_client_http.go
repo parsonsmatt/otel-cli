@@ -71,6 +71,7 @@ func (hc *HttpClient) UploadTraces(ctx context.Context, rsps []*tracepb.Resource
 		req.Header.Add(k, v)
 	}
 	req.Header.Set("Content-Type", "application/x-protobuf")
+	req.Header.Set("Accept", "application/x-protobuf")
 
 	return retry(ctx, hc.config, func(context.Context) (context.Context, bool, time.Duration, error) {
 		var body []byte

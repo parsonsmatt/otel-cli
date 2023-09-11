@@ -98,10 +98,10 @@ func doExec(cmd *cobra.Command, args []string) {
 	}
 
         c := make(chan os.Signal, 100)
-        signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+        signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
         // ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
         // defer stop()
-
+        doneChan := make(chan bool)
         finishSpan := func () {
             fmt.Println("finishing span")
             span.EndTimeUnixNano = uint64(time.Now().UnixNano())
@@ -130,12 +130,12 @@ func doExec(cmd *cobra.Command, args []string) {
         }
         go func() {
             for sig := range c {
-                defer finishSpan()
                 fmt.Println("sig: ", sig)
+                finishSpan()
+                doneChan <- true
             }
 
         }()
-        defer finishSpan()
 
 	if err := child.Run(); err != nil {
                 span.Status = & tracev1.Status {
@@ -143,4 +143,14 @@ func doExec(cmd *cobra.Command, args []string) {
                         Code: tracev1.Status_STATUS_CODE_ERROR,
                 }
 	}
+        defer finishSpan()
+        wait := func () {
+            fmt.Println("in wait")
+            select {
+            case <- doneChan:
+                fmt.Println("done pulled")
+            }
+        }
+        fmt.Println("about to call wait")
+        wait()
 }
